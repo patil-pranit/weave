@@ -1,0 +1,7 @@
+Frontend:   React + TypeScript + TailwindCSS + Recharts
+Backend:    FastAPI (Python) — perfect for data science integrations
+Database:   PostgreSQL (structured) + Redis (caching live data)
+Data Jobs:  Celery + Celery Beat (scheduled scrapers)
+Auth:       Supabase Auth (Google OAuth + Email)
+Hosting:    Railway.app (Backend) + Vercel (Frontend)
+Storage:    Supabase Storage (reports/exports)

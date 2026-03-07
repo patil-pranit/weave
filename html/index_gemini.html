@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WealthWeave</title>
+    
+    <!-- Chosen Palette: Warm Neutrals with Teal Accents. Background: stone-50, Text: stone-800, Accents: teal-600/emerald-500 for trust and growth. -->
+    
+    <!-- Application Structure Plan: 
+    The SPA is structured as a linear workflow with drill-down capabilities.
+    1. Builder View (Home): Gathers user constraints (Investment size, Sectors). This is the logical starting point for personalization.
+    2. Dashboard View: Presents the generated portfolio. Uses a top-level summary (Total Value, Expected Return) and a visual asset allocation (Doughnut chart) alongside a detailed holdings table. This allows users to grasp the macro-picture before diving into micro-details.
+    3. Stock Deep Dive View: Accessible by clicking a stock in the dashboard. Provides comprehensive data on a single entity (Price history line chart, Financials bar chart, Company Info, Live News). This separation of concerns prevents the dashboard from becoming cluttered and allows focused research. 
+    -->
+
+    <!-- Visualization & Content Choices:
+    1. Asset Allocation -> Goal: Proportions -> Viz: Chart.js Doughnut Chart -> Interaction: Hover tooltips -> Justification: Best for showing part-to-whole relationships in a portfolio -> Method: Chart.js.
+    2. Historical Price -> Goal: Trend over time -> Viz: Chart.js Line Chart -> Interaction: Hover for exact dates/prices -> Justification: Standard and most effective way to read stock market trends -> Method: Chart.js.
+    3. Financial Results -> Goal: Compare Revenue vs Profit -> Viz: Chart.js Bar Chart (Grouped) -> Interaction: Hover details -> Justification: Allows easy year-over-year comparison of two related metrics -> Method: Chart.js.
+    4. Holdings/News -> Goal: Organize data -> Viz: Styled HTML Tables and Lists -> Interaction: Clickable rows for drill-down -> Justification: Cleanest way to present structured text and numeric data -> Method: HTML/Tailwind.
+    -->
+
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        /* Base Styling & Typography */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #fafaf9; /* stone-50 */
+            color: #292524; /* stone-800 */
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Chart Container Mandatory Styling */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px;
+            max-height: 400px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .chart-container-small {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 250px;
+            max-height: 300px;
+        }
+
+        @media (max-width: 640px) {
+            .chart-container {
+                height: 250px;
+            }
+        }
+
+        /* Utilities */
+        .hide { display: none !important; }
+        .fade-in { animation: fadeIn 0.4s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* Custom Checkbox */
+        input[type="checkbox"]:checked {
+            background-color: #0d9488; /* teal-600 */
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Navigation -->
+    <nav class="bg-white border-b border-stone-200 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center cursor-pointer" onclick="app.navigate('home')">
+                    <span class="text-2xl mr-2">📈</span>
+                    <span class="font-bold text-xl tracking-tight text-teal-800">Weave</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button id="navDashboardBtn" onclick="app.navigate('dashboard')" class="hide text-stone-500 hover:text-teal-600 font-medium px-3 py-2 rounded-md transition-colors">My Portfolio</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <!-- VIEW 1: Portfolio Builder (Home) -->
+        <section id="view-home" class="fade-in">
+            <div class="text-center max-w-3xl mx-auto mb-12">
+                <h1 class="text-4xl font-extrabold text-stone-900 mb-4">Weave Your Intelligent Wealth Portfolio</h1>
+                <p class="text-lg text-stone-600">
+                    Welcome to the first step of your investment journey. This section allows you to define your investment parameters. By selecting your preferred capital size and industry sectors, our system will algorithmically generate a diversified wireframe portfolio of top-tier Indian equities tailored to your preferences.
+                </p>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-lg border border-stone-100 p-6 md:p-10 max-w-2xl mx-auto">
+                <form id="portfolioForm" onsubmit="app.generatePortfolio(event)">
+                    
+                    <div class="mb-8">
+                        <label for="investmentAmount" class="block text-sm font-semibold text-stone-700 mb-2">Total Investment Amount (₹ INR)</label>
+                        <p class="text-xs text-stone-500 mb-3">Define the total capital you wish to allocate across your portfolio.</p>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-stone-500 text-lg">₹</span>
+                            <input type="number" id="investmentAmount" min="10000" step="5000" value="100000" required
+                                class="w-full pl-8 pr-4 py-3 rounded-lg border border-stone-300 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-shadow text-lg font-medium text-stone-800">
+                        </div>
+                    </div>
+
+                    <div class="mb-8">
+                        <label class="block text-sm font-semibold text-stone-700 mb-2">Select Preferred Industries</label>
+                        <p class="text-xs text-stone-500 mb-3">Choose the sectors you want exposure to. We will select leading companies from these domains.</p>
+                        
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            <label class="flex items-center p-3 border border-stone-200 rounded-lg cursor-pointer hover:bg-stone-50 transition-colors">
+                                <input type="checkbox" name="sector" value="IT" class="w-5 h-5 text-teal-600 border-stone-300 rounded focus:ring-teal-500" checked>
+                                <span class="ml-3 text-stone-700 font-medium">IT Services</span>
+                            </label>
+                            <label class="flex items-center p-3 border border-stone-200 rounded-lg cursor-pointer hover:bg-stone-50 transition-colors">
+                                <input type="checkbox" name="sector" value="Finance" class="w-5 h-5 text-teal-600 border-stone-300 rounded focus:ring-teal-500" checked>
+                                <span class="ml-3 text-stone-700 font-medium">Banking & Finance</span>
+                            </label>
+                            <label class="flex items-center p-3 border border-stone-200 rounded-lg cursor-pointer hover:bg-stone-50 transition-colors">
+                                <input type="checkbox" name="sector" value="Energy" class="w-5 h-5 text-teal-600 border-stone-300 rounded focus:ring-teal-500" checked>
+                                <span class="ml-3 text-stone-700 font-medium">Energy & Oil</span>
+                            </label>
+                            <label class="flex items-center p-3 border border-stone-200 rounded-lg cursor-pointer hover:bg-stone-50 transition-colors">
+                                <input type="checkbox" name="sector" value="FMCG" class="w-5 h-5 text-teal-600 border-stone-300 rounded focus:ring-teal-500">
+                                <span class="ml-3 text-stone-700 font-medium">FMCG</span>
+                            </label>
+                            <label class="flex items-center p-3 border border-stone-200 rounded-lg cursor-pointer hover:bg-stone-50 transition-colors">
+                                <input type="checkbox" name="sector" value="Auto" class="w-5 h-5 text-teal-600 border-stone-300 rounded focus:ring-teal-500">
+                                <span class="ml-3 text-stone-700 font-medium">Automobiles</span>
+                            </label>
+                        </div>
+                        <p id="sectorError" class="text-red-500 text-sm mt-2 hide">Please select at least one industry.</p>
+                    </div>
+
+                    <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-colors text-lg flex justify-center items-center">
+                        Generate Portfolio <span>✨</span>
+                    </button>
+                </form>
+            </div>
+        </section>
+
+
+        <!-- VIEW 2: Portfolio Dashboard -->
+        <section id="view-dashboard" class="hide fade-in">
+            <div class="mb-8 border-b border-stone-200 pb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+                <div>
+                    <h2 class="text-3xl font-bold text-stone-900 mb-2">Your Suggested Portfolio</h2>
+                    <p class="text-stone-600 max-w-2xl">
+                        This section provides a macro view of your customized portfolio. It visualizes how your capital is distributed across different assets to mitigate risk and displays the aggregated holdings. Use this to understand your overall exposure before examining individual companies.
+                    </p>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-stone-100 text-right min-w-[200px]">
+                    <p class="text-sm text-stone-500 uppercase tracking-wide font-semibold">Total Value</p>
+                    <p class="text-3xl font-bold text-teal-700" id="dashTotalValue">₹0</p>
+                    <p class="text-sm text-emerald-600 font-medium mt-1">Est. 1Y Return: +12.4%</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                
+                <!-- Allocation Chart -->
+                <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-sm border border-stone-100 flex flex-col">
+                    <h3 class="text-xl font-bold text-stone-800 mb-2">Asset Allocation</h3>
+                    <p class="text-sm text-stone-500 mb-6">Distribution of your investment across selected equities.</p>
+                    <div class="flex-grow flex items-center justify-center">
+                        <div class="chart-container-small">
+                            <canvas id="allocationChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Holdings Table -->
+                <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-stone-100 overflow-hidden">
+                    <div class="p-6 border-b border-stone-100 bg-stone-50/50">
+                        <h3 class="text-xl font-bold text-stone-800">Current Holdings</h3>
+                        <p class="text-sm text-stone-500 mt-1">Click on any row to view deep-dive technical and fundamental analysis.</p>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-stone-100 text-stone-600 text-sm uppercase tracking-wider">
+                                    <th class="p-4 font-semibold">Company</th>
+                                    <th class="p-4 font-semibold">Sector</th>
+                                    <th class="p-4 font-semibold text-right">LTP (₹)</th>
+                                    <th class="p-4 font-semibold text-right">Shares</th>
+                                    <th class="p-4 font-semibold text-right">Value (₹)</th>
+                                    <th class="p-4 font-semibold text-center">Alloc.</th>
+                                </tr>
+                            </thead>
+                            <tbody id="holdingsTableBody" class="divide-y divide-stone-100">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- VIEW 3: Stock Deep Dive -->
+        <section id="view-stock-detail" class="hide fade-in">
+            <!-- Breadcrumb -->
+            <div class="mb-6 flex items-center text-sm font-medium text-stone-500">
+                <button onclick="app.navigate('dashboard')" class="hover:text-teal-600 flex items-center transition-colors">
+                    <span class="mr-1">🔙</span> Back to Portfolio
+                </button>
+                <span class="mx-2">/</span>
+                <span id="detailBreadcrumb" class="text-stone-800">Stock Name</span>
+            </div>
+
+            <div class="mb-8">
+                <h2 class="text-3xl font-bold text-stone-900 mb-2">Equity Deep Dive</h2>
+                <p class="text-stone-600 max-w-3xl">
+                    This section provides a granular analysis of the selected stock. It synthesizes historical price action for technical analysis, high-level financial results for fundamental analysis, and live corporate news, enabling informed, data-driven investment decisions.
+                </p>
+            </div>
+
+            <!-- Header Info -->
+            <div class="bg-white rounded-xl shadow-sm border border-stone-100 p-6 md:p-8 mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                <div>
+                    <div class="flex items-center gap-3 mb-2">
+                        <h1 id="detailName" class="text-4xl font-extrabold text-stone-900">Company Name</h1>
+                        <span id="detailTicker" class="bg-stone-100 text-stone-600 px-3 py-1 rounded-full text-sm font-bold tracking-wider">TICKER</span>
+                    </div>
+                    <p id="detailSector" class="text-teal-700 font-semibold mb-3 flex items-center gap-2"><span>🏢</span> Sector</p>
+                    <p id="detailDesc" class="text-stone-600 max-w-3xl leading-relaxed">Company description goes here.</p>
+                </div>
+                <div class="bg-stone-50 p-6 rounded-lg border border-stone-200 text-center min-w-[220px]">
+                    <p class="text-sm text-stone-500 font-semibold uppercase tracking-wider mb-1">Current Price</p>
+                    <p id="detailPrice" class="text-4xl font-bold text-stone-800">₹0.00</p>
+                    <p class="text-sm text-emerald-600 font-medium mt-2">Market Cap: <span id="detailMcap">--</span></p>
+                </div>
+            </div>
+
+            <!-- Charts Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                
+                <!-- Price History -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-stone-100">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h3 class="text-xl font-bold text-stone-800">Historical Price Action</h3>
+                            <p class="text-sm text-stone-500 mt-1">1-Year technical trend analysis.</p>
+                        </div>
+                        <span class="text-2xl text-stone-300">📈</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="priceChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Financials -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-stone-100">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h3 class="text-xl font-bold text-stone-800">Financial Performance</h3>
+                            <p class="text-sm text-stone-500 mt-1">Annual Revenue vs Net Profit (₹ Crores).</p>
+                        </div>
+                        <span class="text-2xl text-stone-300">💰</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="financialsChart"></canvas>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Live News Section -->
+            <div class="bg-white rounded-xl shadow-sm border border-stone-100 p-6">
+                 <div class="flex items-center gap-2 mb-6 border-b border-stone-100 pb-4">
+                    <span class="text-2xl">📰</span>
+                    <h3 class="text-xl font-bold text-stone-800">Recent Corporate News & Filings</h3>
+                </div>
+                <div id="newsContainer" class="space-y-4">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        /**
+         * Indian Stock Market Mock Database
+         * Contains historical prices, financials, and metadata to simulate a backend response.
+         */
+        const MOCK_DB = [
+            {
+                id: 'TCS', name: 'Tata Consultancy Services', sector: 'IT', ticker: 'TCS.NS', currentPrice: 4120.50, marketCap: '₹15.1 Lakh Cr',
+                description: 'TCS is an IT services, consulting and business solutions organization that has been partnering with many of the world\'s largest businesses for the past 50 years.',
+                history: [3200, 3350, 3100, 3400, 3600, 3550, 3800, 3950, 4050, 3900, 4100, 4120.50],
+                financials: { labels: ['FY21', 'FY22', 'FY23'], revenue: [164177, 191754, 225458], profit: [32430, 38327, 42147] },
+                news: [
+                    { date: '2 hrs ago', title: 'TCS wins massive $1.5B digital transformation deal in Europe.', sentiment: 'positive' },
+                    { date: '1 day ago', title: 'Q3 Results declared: Margin expansion surprises analysts.', sentiment: 'positive' },
+                    { date: '3 days ago', title: 'New AI COE opened in Bengaluru campus.', sentiment: 'neutral' }
+                ]
+            },
+            {
+                id: 'INFY', name: 'Infosys Limited', sector: 'IT', ticker: 'INFY.NS', currentPrice: 1680.25, marketCap: '₹6.9 Lakh Cr',
+                description: 'Infosys is a global leader in next-generation digital services and consulting, enabling clients in more than 50 countries to navigate their digital transformation.',
+                history: [1400, 1450, 1380, 1500, 1550, 1600, 1580, 1620, 1650, 1610, 1670, 1680.25],
+                financials: { labels: ['FY21', 'FY22', 'FY23'], revenue: [100472, 121641, 146767], profit: [19351, 22110, 24095] },
+                news: [
+                    { date: '4 hrs ago', title: 'Infosys board approves share buyback worth ₹9,300 Cr.', sentiment: 'positive' },
+                    { date: '2 days ago', title: 'Attrition rate drops to single digits in recent quarter.', sentiment: 'positive' }
+                ]
+            },
+            {
+                id: 'HDFCBANK', name: 'HDFC Bank Ltd', sector: 'Finance', ticker: 'HDFCBANK.NS', currentPrice: 1450.70, marketCap: '₹11.0 Lakh Cr',
+                description: 'HDFC Bank is India\'s leading private sector bank, offering a wide range of financial products and services to retail and corporate customers.',
+                history: [1600, 1650, 1580, 1550, 1620, 1680, 1500, 1480, 1420, 1460, 1440, 1450.70],
+                financials: { labels: ['FY21', 'FY22', 'FY23'], revenue: [146063, 157263, 192800], profit: [31116, 36961, 44108] },
+                news: [
+                    { date: '1 hr ago', title: 'HDFC Bank announces revision in FD interest rates.', sentiment: 'neutral' },
+                    { date: '5 hrs ago', title: 'Merger synergies taking longer than expected, says CEO.', sentiment: 'negative' }
+                ]
+            },
+            {
+                id: 'ICICIBANK', name: 'ICICI Bank Ltd', sector: 'Finance', ticker: 'ICICIBANK.NS', currentPrice: 1080.40, marketCap: '₹7.5 Lakh Cr',
+                description: 'ICICI Bank is a leading private sector bank in India offering a diversified portfolio of financial products and services.',
+                history: [850, 880, 920, 900, 950, 980, 970, 1020, 1050, 1040, 1070, 1080.40],
+                financials: { labels: ['FY21', 'FY22', 'FY23'], revenue: [102143, 104891, 129000], profit: [16192, 23339, 31896] },
+                news: [
+                    { date: '1 day ago', title: 'ICICI Bank posts 23% YoY jump in net profit.', sentiment: 'positive' }
+                ]
+            },
+            {
+                id: 'RELIANCE', name: 'Reliance Industries', sector: 'Energy', ticker: 'RELIANCE.NS', currentPrice: 2950.00, marketCap: '₹19.9 Lakh Cr',
+                description: 'Reliance Industries is a Fortune 500 company and the largest private sector corporation in India, with interests in petrochemicals, refining, oil, telecommunications, and retail.',
+                history: [2400, 2350, 2450, 2500, 2480, 2600, 2750, 2700, 2850, 2900, 2920, 2950.00],
+                financials: { labels: ['FY21', 'FY22', 'FY23'], revenue: [466924, 699962, 877835], profit: [49128, 60705, 66702] },
+                news: [
+                    { date: '30 mins ago', title: 'Jio platform announces new 5G tariff plans.', sentiment: 'neutral' },
+                    { date: '1 day ago', title: 'Reliance Retail expansion plans in tier-2 cities revealed.', sentiment: 'positive' }
+                ]
+            },
+            {
+                id: 'ITC', name: 'ITC Limited', sector: 'FMCG', ticker: 'ITC.NS', currentPrice: 420.15, marketCap: '₹5.2 Lakh Cr',
+                description: 'ITC is one of India\'s foremost private sector companies with a diversified presence in FMCG, Hotels, Packaging, Paperboards & Specialty Papers and Agri-Business.',
+                history: [350, 360, 380, 395, 410, 430, 445, 455, 440, 435, 425, 420.15],
+                financials: { labels: ['FY21', 'FY22', 'FY23'], revenue: [49257, 60668, 70919], profit: [13031, 15057, 18753] },
+                news: [
+                    { date: '2 days ago', title: 'ITC hotel business demerger approved by NCLT.', sentiment: 'positive' }
+                ]
+            },
+             {
+                id: 'TATAMOTORS', name: 'Tata Motors Ltd', sector: 'Auto', ticker: 'TATAMOTORS.NS', currentPrice: 980.60, marketCap: '₹3.2 Lakh Cr',
+                description: 'Tata Motors is a leading global automobile manufacturer of cars, utility vehicles, pick-ups, trucks and buses, part of the multinational Tata group.',
+                history: [450, 480, 520, 550, 600, 650, 720, 800, 880, 920, 960, 980.60],
+                financials: { labels: ['FY21', 'FY22', 'FY23'], revenue: [249794, 278453, 345966], profit: [-13395, -11441, 2414] },
+                news: [
+                    { date: '10 hrs ago', title: 'Tata Motors domestic EV sales cross 1 lakh milestone.', sentiment: 'positive' },
+                    { date: '2 days ago', title: 'JLR reports strong quarterly growth in wholesale volumes.', sentiment: 'positive' }
+                ]
+            }
+        ];
+
+        /**
+         * Application State & Logic
+         */
+        const app = {
+            state: {
+                portfolio: [],
+                totalInvestment: 0,
+                selectedStockId: null,
+                charts: {} // Store chart instances to destroy them before re-rendering
+            },
+
+            // Functional Navigation
+            navigate: function(viewId) {
+                // Hide all views
+                document.getElementById('view-home').classList.add('hide');
+                document.getElementById('view-dashboard').classList.add('hide');
+                document.getElementById('view-stock-detail').classList.add('hide');
+
+                // Show target view
+                document.getElementById(`view-${viewId}`).classList.remove('hide');
+
+                // Scroll to top
+                window.scrollTo(0, 0);
+
+                // Update Header Nav visibility
+                const navDash = document.getElementById('navDashboardBtn');
+                if(this.state.portfolio.length > 0) {
+                    navDash.classList.remove('hide');
+                } else {
+                    navDash.classList.add('hide');
+                }
+            },
+
+            // Generate Portfolio based on user input
+            generatePortfolio: function(event) {
+                event.preventDefault();
+                
+                const amount = parseFloat(document.getElementById('investmentAmount').value);
+                const checkboxes = document.querySelectorAll('input[name="sector"]:checked');
+                const selectedSectors = Array.from(checkboxes).map(cb => cb.value);
+                const errorMsg = document.getElementById('sectorError');
+
+                if (selectedSectors.length === 0) {
+                    errorMsg.classList.remove('hide');
+                    return;
+                }
+                errorMsg.classList.add('hide');
+
+                this.state.totalInvestment = amount;
+
+                // 1. Filter DB by selected sectors
+                const availableStocks = MOCK_DB.filter(stock => selectedSectors.includes(stock.sector));
+                
+                // Fallback if DB doesn't have a sector (shouldn't happen with our mock, but good practice)
+                if(availableStocks.length === 0) {
+                    alert("No stocks available for selected sectors in this demo.");
+                    return;
+                }
+
+                // 2. Calculate allocation (Simple Equal Weight for wireframe)
+                const allocationPerStock = amount / availableStocks.length;
+                const allocationPct = (100 / availableStocks.length).toFixed(1);
+
+                this.state.portfolio = availableStocks.map(stock => {
+                    const shares = Math.floor(allocationPerStock / stock.currentPrice);
+                    const actualValue = shares * stock.currentPrice;
+                    return {
+                        ...stock,
+                        shares: shares,
+                        allocatedValue: actualValue,
+                        allocationPct: ((actualValue / amount) * 100).toFixed(1)
+                    };
+                });
+
+                // Calculate actual total invested (due to fractional share rounding)
+                const actualTotalInvested = this.state.portfolio.reduce((sum, item) => sum + item.allocatedValue, 0);
+                
+                // Render Dashboard
+                this.renderDashboard(actualTotalInvested);
+                this.navigate('dashboard');
+            },
+
+            // Format Currency Helper
+            formatCurrency: function(value) {
+                return new Intl.NumberFormat('en-IN', {
+                    style: 'currency',
+                    currency: 'INR',
+                    maximumFractionDigits: 0
+                }).format(value);
+            },
+
+            // Render Dashboard View
+            renderDashboard: function(actualTotalInvested) {
+                // Update Total Value
+                document.getElementById('dashTotalValue').textContent = this.formatCurrency(actualTotalInvested);
+
+                // Render Table
+                const tbody = document.getElementById('holdingsTableBody');
+                tbody.innerHTML = '';
+                
+                this.state.portfolio.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-stone-50 cursor-pointer transition-colors group';
+                    tr.onclick = () => this.openStockDetail(item.id);
+                    
+                    tr.innerHTML = `
+                        <td class="p-4 border-b border-stone-100">
+                            <div class="font-bold text-stone-800 group-hover:text-teal-700 transition-colors">${item.name}</div>
+                            <div class="text-xs text-stone-500">${item.ticker}</div>
+                        </td>
+                        <td class="p-4 border-b border-stone-100">
+                            <span class="bg-stone-100 text-stone-600 px-2 py-1 rounded text-xs font-medium">${item.sector}</span>
+                        </td>
+                        <td class="p-4 border-b border-stone-100 text-right font-medium text-stone-700">₹${item.currentPrice.toFixed(2)}</td>
+                        <td class="p-4 border-b border-stone-100 text-right text-stone-600">${item.shares}</td>
+                        <td class="p-4 border-b border-stone-100 text-right font-semibold text-stone-800">${this.formatCurrency(item.allocatedValue)}</td>
+                        <td class="p-4 border-b border-stone-100 text-center">
+                            <div class="inline-block bg-teal-50 text-teal-700 px-2 py-1 rounded text-sm font-bold">${item.allocationPct}%</div>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+                // Render Chart
+                this.renderAllocationChart();
+            },
+
+            // Chart rendering logic for Dashboard
+            renderAllocationChart: function() {
+                const ctx = document.getElementById('allocationChart').getContext('2d');
+                
+                if (this.state.charts.allocation) {
+                    this.state.charts.allocation.destroy();
+                }
+
+                const labels = this.state.portfolio.map(s => s.ticker.split('.')[0]);
+                const data = this.state.portfolio.map(s => s.allocatedValue);
+                
+                // Warm, distinct colors for sectors
+                const colors = ['#0d9488', '#d97706', '#0284c7', '#4f46e5', '#16a34a', '#db2777', '#ca8a04'];
+
+                this.state.charts.allocation = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: data,
+                            backgroundColor: colors.slice(0, data.length),
+                            borderWidth: 2,
+                            borderColor: '#ffffff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    font: { family: "'Segoe UI', sans-serif", size: 12 },
+                                    color: '#57534e', // stone-600
+                                    boxWidth: 15
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: (context) => {
+                                        let label = context.label || '';
+                                        if (label) { label += ': '; }
+                                        label += this.formatCurrency(context.raw);
+                                        return label;
+                                    }
+                                },
+                                backgroundColor: 'rgba(41, 37, 36, 0.9)', // stone-800
+                                titleFont: { size: 14 },
+                                bodyFont: { size: 13 },
+                                padding: 10,
+                                cornerRadius: 8
+                            }
+                        },
+                        cutout: '65%'
+                    }
+                });
+            },
+
+            // Handle Deep Dive Navigation
+            openStockDetail: function(stockId) {
+                const stock = MOCK_DB.find(s => s.id === stockId);
+                if(!stock) return;
+
+                this.state.selectedStockId = stockId;
+
+                // Populate Text Data
+                document.getElementById('detailBreadcrumb').textContent = stock.ticker;
+                document.getElementById('detailName').textContent = stock.name;
+                document.getElementById('detailTicker').textContent = stock.ticker;
+                document.getElementById('detailSector').innerHTML = `<span>🏢</span> ${stock.sector}`;
+                document.getElementById('detailDesc').textContent = stock.description;
+                document.getElementById('detailPrice').textContent = `₹${stock.currentPrice.toFixed(2)}`;
+                document.getElementById('detailMcap').textContent = stock.marketCap;
+
+                // Populate News
+                const newsContainer = document.getElementById('newsContainer');
+                newsContainer.innerHTML = '';
+                if(stock.news && stock.news.length > 0) {
+                    stock.news.forEach(item => {
+                        let badgeColor = item.sentiment === 'positive' ? 'bg-emerald-100 text-emerald-800' : 
+                                         item.sentiment === 'negative' ? 'bg-red-100 text-red-800' : 'bg-stone-200 text-stone-700';
+                        
+                        newsContainer.innerHTML += `
+                            <div class="p-4 rounded-lg bg-stone-50 border border-stone-100 hover:shadow-sm transition-shadow">
+                                <div class="flex justify-between items-start mb-2">
+                                    <span class="text-xs font-semibold text-stone-500">${item.date}</span>
+                                    <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${badgeColor}">${item.sentiment}</span>
+                                </div>
+                                <p class="text-stone-800 font-medium">${item.title}</p>
+                            </div>
+                        `;
+                    });
+                } else {
+                    newsContainer.innerHTML = '<p class="text-stone-500 italic">No recent news available.</p>';
+                }
+
+                // Render Charts
+                this.renderPriceChart(stock);
+                this.renderFinancialsChart(stock);
+
+                this.navigate('stock-detail');
+            },
+
+            renderPriceChart: function(stock) {
+                const ctx = document.getElementById('priceChart').getContext('2d');
+                if (this.state.charts.price) { this.state.charts.price.destroy(); }
+
+                // Mocking 12 months labels
+                const labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+                this.state.charts.price = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Stock Price (₹)',
+                            data: stock.history,
+                            borderColor: '#0d9488', // teal-600
+                            backgroundColor: 'rgba(13, 148, 136, 0.1)',
+                            borderWidth: 3,
+                            pointBackgroundColor: '#fff',
+                            pointBorderColor: '#0d9488',
+                            pointBorderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            fill: true,
+                            tension: 0.4 // Smooth curves
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(41, 37, 36, 0.9)',
+                                titleFont: { size: 13 },
+                                bodyFont: { size: 14, weight: 'bold' },
+                                displayColors: false,
+                                callbacks: { label: (ctx) => `₹${ctx.raw.toFixed(2)}` }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                grid: { color: '#f5f5f4', drawBorder: false }, // stone-100
+                                ticks: { color: '#78716c', font: {family: "'Segoe UI', sans-serif"} } // stone-500
+                            },
+                            x: {
+                                grid: { display: false, drawBorder: false },
+                                ticks: { color: '#78716c', font: {family: "'Segoe UI', sans-serif"} }
+                            }
+                        },
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                    }
+                });
+            },
+
+            renderFinancialsChart: function(stock) {
+                const ctx = document.getElementById('financialsChart').getContext('2d');
+                if (this.state.charts.financials) { this.state.charts.financials.destroy(); }
+
+                this.state.charts.financials = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: stock.financials.labels,
+                        datasets: [
+                            {
+                                label: 'Revenue',
+                                data: stock.financials.revenue,
+                                backgroundColor: '#94a3b8', // slate-400
+                                borderRadius: 4
+                            },
+                            {
+                                label: 'Net Profit',
+                                data: stock.financials.profit,
+                                backgroundColor: '#0d9488', // teal-600
+                                borderRadius: 4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: { color: '#57534e', font: {family: "'Segoe UI', sans-serif"} }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(41, 37, 36, 0.9)',
+                                callbacks: { label: (ctx) => `${ctx.dataset.label}: ₹${ctx.raw.toLocaleString()} Cr` }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: '#f5f5f4', drawBorder: false },
+                                ticks: {
+                                    color: '#78716c',
+                                    callback: function(value) { return '₹' + (value/1000) + 'k'; } // Abbreviate
+                                }
+                            },
+                            x: {
+                                grid: { display: false, drawBorder: false },
+                                ticks: { color: '#78716c' }
+                            }
+                        }
+                    }
+                });
+            }
+        };
+
+        // Initialize App on load
+        document.addEventListener('DOMContentLoaded', () => {
+            app.navigate('home');
+        });
+
+    </script>
+</body>
+</html>

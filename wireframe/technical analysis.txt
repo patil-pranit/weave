@@ -1,0 +1,22 @@
+Indicators Used:
+├── Trend Analysis
+│   ├── SMA (50-day, 200-day) — Golden/Death Cross
+│   ├── EMA (12, 26) — Momentum confirmation
+│   └── MACD — Entry/exit signals
+├── Momentum
+│   ├── RSI (14) — Overbought/Oversold screening
+│   └── Stochastic Oscillator
+├── Volatility
+│   ├── Bollinger Bands — Range breakout detection
+│   └── ATR — Position sizing
+├── Fundamental Scoring
+│   ├── Revenue Growth (YoY)
+│   ├── PAT Margin
+│   ├── Debt-to-Equity ratio
+│   ├── P/E vs Sector P/E
+│   └── Return on Equity (ROE)
+└── Portfolio Construction
+    ├── Modern Portfolio Theory (MPT)
+    ├── Sharpe Ratio optimization
+    ├── Sector diversification rules
+    └── Equal-weight vs Score-weight allocation
