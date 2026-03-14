@@ -1253,6 +1253,140 @@
 </div>
 
 <script>
+const API_BASE_URL = "http://127.0.0.1:8000/api/v1";
+  const app = {
+    // Fetches live price and fundamentals for a specific stock
+    async fetchStock(symbol) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/stocks/${symbol}/price`);
+        if (!response.ok) throw new Error('Network response was not ok');
+        return await response.json();
+      } catch (error) {
+        console.error("Fetch error:", error);
+      }
+    },
+
+    // Fetches historical data for the Chart.js line graph
+    async fetchHistory(symbol) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/stocks/${symbol}/history?period=1y&interval=1d`);
+        return await response.json();
+      } catch (error) {
+        console.error("History fetch error:", error);
+      }
+    },
+    // Add this inside the app = { ... } object
+  async fetchNews(symbol = null) {
+      try {
+          const url = symbol 
+              ? `${API_BASE_URL}/news?symbol=${symbol}` 
+              : `${API_BASE_URL}/news`;
+          const response = await fetch(url);
+          return await response.json();
+      } catch (error) {
+          console.error("News fetch error:", error);
+          return null;
+      }
+    }
+  };
+
+// --- UPDATED SHOWRESULT FUNCTION ---
+async function showResult() {
+    const generateBtn = document.querySelector('.generate-btn');
+    generateBtn.innerHTML = 'GENERATING... <span class="dot-live"></span>';
+    generateBtn.disabled = true;
+
+    try {
+        // 1. Gather Inputs from the UI
+        const amountStr = document.querySelector('input[placeholder*="₹"]').value;
+        const investmentAmount = parseFloat(amountStr.replace(/[^0-9.]/g, '')) || 500000;
+        
+        const riskAppetite = parseInt(document.getElementById('riskRange').value);
+        
+        const selectedSectors = Array.from(document.querySelectorAll('.industry-chip.selected'))
+            .map(chip => {
+                const text = chip.textContent.trim();
+                // Map frontend names to backend STOCK_UNIVERSE keys
+                if (text.includes("IT")) return "IT";
+                if (text.includes("Banking")) return "Banking";
+                if (text.includes("Energy")) return "Energy";
+                if (text.includes("FMCG")) return "FMCG";
+                return null;
+            }).filter(s => s !== null);
+
+        if (selectedSectors.length === 0) {
+            alert("Please select at least one industry (IT, Banking, Energy, or FMCG).");
+            generateBtn.innerHTML = '⊞ GENERATE PORTFOLIO →';
+            generateBtn.disabled = false;
+            return;
+        }
+
+        // 2. Make the API Call to your FastAPI backend
+        const response = await fetch(`${API_BASE_URL}/portfolios/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                investment_amount: investmentAmount,
+                risk_appetite: riskAppetite,
+                sectors: selectedSectors
+            })
+        });
+
+        if (!response.ok) throw new Error('Failed to generate portfolio');
+        const data = await response.json();
+
+        // 3. Update the Results Panel in UI
+        renderPortfolioResults(data);
+
+    } catch (error) {
+        console.error("Error:", error);
+        alert("Backend error: Ensure FastAPI is running and CORS is enabled.");
+    } finally {
+        generateBtn.innerHTML = '⊞ GENERATE PORTFOLIO →';
+        generateBtn.disabled = false;
+    }
+}
+
+// --- NEW HELPER TO RENDER THE ROWS ---
+function renderPortfolioResults(data) {
+    // Update the Summary Scores
+    const scoreBoxes = document.querySelectorAll('.score-num');
+    if(scoreBoxes.length >= 3) {
+        scoreBoxes[0].textContent = (data.composite_score / 10).toFixed(1); // Mock Sharpe
+        scoreBoxes[1].textContent = "18.4%"; // Strategy based est.
+        scoreBoxes[2].textContent = (0.7 + (Math.random() * 0.3)).toFixed(2); // Mock Beta
+    }
+
+    // Update the Result Rows
+    const resultsContainer = document.querySelector('.results-panel');
+    const existingRows = resultsContainer.querySelectorAll('.stock-result-row');
+    
+    // Clear existing rows (except the header/notes)
+    existingRows.forEach(row => row.remove());
+
+    data.holdings.forEach((stock, index) => {
+        const row = document.createElement('div');
+        row.className = 'stock-result-row';
+        row.innerHTML = `
+            <div class="result-rank">${(index + 1).toString().padStart(2, '0')}</div>
+            <div class="result-info">
+                <div class="result-sym">${stock.symbol}</div>
+                <div class="result-co">${stock.name}</div>
+            </div>
+            <div class="result-score-bar">
+                <div style="font-size:0.55rem;color:var(--text-dim);margin-bottom:3px">Score: ${stock.score}/100</div>
+                <div class="score-bar-bg">
+                    <div class="score-bar-fill" style="width:${stock.score}%; background: var(--accent)"></div>
+                </div>
+            </div>
+            <div class="result-alloc">₹${(stock.allocation/1000).toFixed(1)}k</div>
+            <div class="result-tag"><span class="tag tag-buy">BUY</span></div>
+        `;
+        // Insert before the footer note
+        resultsContainer.insertBefore(row, resultsContainer.querySelector('.wf-note').previousSibling);
+    });
+}
+
   const sections = {
     dashboard: 's-dashboard',
     portfolio: 's-portfolio',
@@ -1262,6 +1396,7 @@
     news: 's-news',
     settings: 's-settings',
   };
+
   const titles = {
     dashboard: 'Dashboard',
     portfolio: 'My Portfolios',
@@ -1272,25 +1407,32 @@
     settings: 'Settings',
   };
 
-  function switchSection(key, navEl) {
-    // hide all
-    Object.values(sections).forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.classList.remove('active');
-    });
-    // show target
-    const target = document.getElementById(sections[key]);
-    if (target) {
-      target.classList.add('active');
-      // force reflow for animation
-      void target.offsetWidth;
+async function switchSection(key, navEl) {
+    // ... (Keep your existing switchSection logic here) ...
+
+    if (key === 'news') {
+        const newsData = await app.fetchNews();
+        if (newsData && newsData.news) {
+            const feed = document.querySelector('.news-feed');
+            feed.innerHTML = ''; // Clear mock cards
+
+            newsData.news.forEach(item => {
+                const date = new Date(item.published_at).toLocaleDateString();
+                const card = `
+                    <div class="news-card" onclick="window.open('${item.url}', '_blank')">
+                        <div class="news-img">${item.image.length > 2 ? `<img src="${item.image}" style="width:100%; height:100%; object-fit:cover; border-radius:6px;">` : item.image}</div>
+                        <div class="news-body">
+                            <div class="news-source">${item.source} · ${date}</div>
+                            <div class="news-title">${item.title}</div>
+                            <div class="news-meta">${item.description.substring(0, 100)}...</div>
+                        </div>
+                    </div>
+                `;
+                feed.insertAdjacentHTML('beforeend', card);
+            });
+        }
     }
-    // update nav
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    if (navEl) navEl.classList.add('active');
-    // update title
-    document.getElementById('page-title').textContent = titles[key] || key;
-  }
+}
 </script>
 </body>
 </html>
